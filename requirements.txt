@@ -1,0 +1,5 @@
+Flask
+gTTS
+requests
+pymysql
+ffmpeg-python

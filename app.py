@@ -15,16 +15,49 @@ app.secret_key = os.environ.get("SECRET_KEY", "rahasia_default")
 VOICE_MALE = "id-ID-ArdiNeural"
 
 # ================== DATABASE CONNECTION (CLOUD READY) ==================
+import sqlite3 # Tambahkan import ini di atas
+
+# Ganti fungsi koneksi database jadi ini:
 def get_db_connection():
-    # Railway akan memberikan variabel environment ini otomatis nanti
-    return pymysql.connect(
-        host=os.environ.get("MYSQLHOST", "localhost"),
-        user=os.environ.get("MYSQLUSER", "root"),
-        password=os.environ.get("MYSQLPASSWORD", ""),
-        database=os.environ.get("MYSQLDATABASE", "flask_app"),
-        port=int(os.environ.get("MYSQLPORT", 3306)),
-        cursorclass=pymysql.cursors.DictCursor
-    )
+    # Database akan dibuat otomatis bernama database.db
+    conn = sqlite3.connect('database.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# Tambahkan fungsi ini untuk bikin tabel otomatis saat pertama jalan
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Buat tabel users
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+    # Buat tabel messages
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT
+        )
+    ''')
+    # Buat user admin default jika belum ada
+    cursor.execute("SELECT * FROM users WHERE username='admin'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123')")
+    
+    conn.commit()
+    conn.close()
+
+# Panggil init_db() di bagian paling bawah sebelum app.run:
+if __name__ == "__main__":
+    init_db() # <--- Tambahkan ini
+    if not os.path.exists("static"): os.makedirs("static")
+    app.run(...)
 # =======================================================================
 
 # --- Login & Routes Standar (Sama seperti sebelumnya) ---

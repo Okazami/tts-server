@@ -1,5 +1,7 @@
 Flask
-gTTS
-requests
+edge-tts
 pymysql
-ffmpeg-python
+requests
+gunicorn
+cryptography
+asyncio

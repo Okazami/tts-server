@@ -1,17 +1,190 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-  <title>Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Sistem Informasi Desa Dwitiro</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* Mencegah scrollbar karena animasi background */
+            position: relative;
+        }
+
+        /* --- Background Dekoratif (Lingkaran Blur) --- */
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 10s infinite alternate;
+        }
+
+        .shape-1 {
+            width: 300px;
+            height: 300px;
+            background: #2563eb; /* Biru Utama */
+            top: -50px;
+            left: -50px;
+        }
+
+        .shape-2 {
+            width: 400px;
+            height: 400px;
+            background: #60a5fa; /* Biru Muda */
+            bottom: -100px;
+            right: -100px;
+            animation-delay: -5s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(30px, 30px); }
+        }
+
+        /* --- Kartu Login --- */
+        .login-card {
+            border: none;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.85); /* Efek Kaca */
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+
+        /* --- Form Styling --- */
+        .form-control {
+            border-radius: 12px;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            background-color: #f8fafc;
+            font-size: 0.95rem;
+        }
+
+        .form-control:focus {
+            background-color: #fff;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            border: none;
+            border-radius: 12px;
+            padding: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+            transition: all 0.3s;
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px rgba(37, 99, 235, 0.35);
+        }
+
+        .text-muted-custom {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+    </style>
 </head>
 <body>
-  <h2>Login ke Sistem</h2>
-  {% if error %}
-    <p style="color:red">{{ error }}</p>
-  {% endif %}
-  <form method="POST">
-    <input type="text" name="username" placeholder="Username" required><br>
-    <input type="password" name="password" placeholder="Password" required><br>
-    <button type="submit">Login</button>
-  </form>
+
+    <!-- Elemen Dekorasi Background -->
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+
+    <div class="container d-flex justify-content-center">
+        
+        <div class="card login-card">
+            <div class="card-body p-4">
+                
+                <!-- Header Logo -->
+                <div class="text-center mb-4">
+                    <div class="logo-icon">
+                        <i class="bi bi-buildings-fill"></i>
+                    </div>
+                    <h4 class="fw-bold text-dark mb-1">Desa Dwitiro</h4>
+                    <p class="text-muted-custom">Sistem Informasi Pengumuman</p>
+                </div>
+                
+                <!-- Pesan Error (Flask) -->
+                {% if error %}
+                    <div class="alert alert-danger d-flex align-items-center rounded-3 py-2 px-3 mb-4 small shadow-sm" role="alert">
+                        <i class="bi bi-exclamation-circle-fill me-2"></i>
+                        <div>{{ error }}</div>
+                    </div>
+                {% endif %}
+                
+                <!-- Form Login -->
+                <form method="POST">
+                    
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control" id="username" name="username" placeholder="Username" required>
+                        <label for="username"><i class="bi bi-person me-1"></i> Username</label>
+                    </div>
+                    
+                    <div class="form-floating mb-4">
+                        <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
+                        <label for="password"><i class="bi bi-lock me-1"></i> Password</label>
+                    </div>
+                    
+                    <div class="d-grid mb-3">
+                        <button type="submit" class="btn btn-primary btn-login">
+                            Masuk Sekarang
+                        </button>
+                    </div>
+
+                </form>
+
+                <div class="text-center mt-4">
+                    <small class="text-muted-custom">&copy; 2025 Pemerintah Desa Dwitiro</small>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

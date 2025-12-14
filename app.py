@@ -1,80 +1,49 @@
-from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template, send_from_directory, redirect, url_for, session, jsonify, send_file
+from gtts import gTTS
 import os
+import requests
+from functools import wraps
 import pymysql
 import time
 import subprocess
-from datetime import datetime
-import asyncio
-import edge_tts
-from functools import wraps
+from datetime import datetime # <--- Tambahan untuk waktu realtime
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.secret_key = os.environ.get("SECRET_KEY", "rahasia_default")
+app.secret_key = "ganti_dengan_secret_key_random"
 
-# Suara Cowok
-VOICE_MALE = "id-ID-ArdiNeural"
+# Pastikan IP ESP32 sesuai
+ESP32_BASE = "http://10.152.15.21"
+is_playing = False
 
-# ================== DATABASE CONNECTION (CLOUD READY) ==================
-import sqlite3 # Tambahkan import ini di atas
-
-# Ganti fungsi koneksi database jadi ini:
+# ================== MySQL Connection ==================
 def get_db_connection():
-    # Database akan dibuat otomatis bernama database.db
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    return pymysql.connect(
+        host="localhost",
+        user="root",
+        password="",
+        database="flask_app",
+        cursorclass=pymysql.cursors.DictCursor
+    )
+# ======================================================
 
-# Tambahkan fungsi ini untuk bikin tabel otomatis saat pertama jalan
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # Buat tabel users
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            password TEXT NOT NULL
-        )
-    ''')
-    # Buat tabel messages
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT
-        )
-    ''')
-    # Buat user admin default jika belum ada
-    cursor.execute("SELECT * FROM users WHERE username='admin'")
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123')")
-    
-    conn.commit()
-    conn.close()
-
-# Panggil init_db() di bagian paling bawah sebelum app.run:
-if __name__ == "__main__":
-    init_db() # <--- Tambahkan ini
-    if not os.path.exists("static"): os.makedirs("static")
-    app.run(...)
-# =======================================================================
-
-# --- Login & Routes Standar (Sama seperti sebelumnya) ---
+# ================= LOGIN SYSTEM ==================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
+
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
             user = cursor.fetchone()
         conn.close()
+
         if user:
             session["user"] = user["username"]
             return redirect(url_for("index"))
         return render_template("login.html", error="Username atau password salah")
+
     return render_template("login.html")
 
 @app.route("/logout")
@@ -89,119 +58,164 @@ def login_required(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
+# =================================================
 
 @app.route("/")
 @login_required
 def index():
     return render_template("index.html", user=session["user"])
 
-# Fungsi Async TTS
-async def generate_audio_edge(text, output_file):
-    communicate = edge_tts.Communicate(text, VOICE_MALE)
-    await communicate.save(output_file)
-
-# ================== TTS INPUT ==================
+# ================== TTS SYSTEM (MODIFIKASI UTAMA) ==================
 @app.route("/tts", methods=["POST"])
 @login_required
 def tts():
+    global is_playing
     text = request.form.get("text", "")
+
+    # 1. Validasi Input
     if not text.strip():
-        return jsonify({"status": "error", "message": "Teks kosong"})
+        # Return JSON error (bukan string biasa) agar JS bisa baca
+        return jsonify({"status": "error", "message": "Teks tidak boleh kosong"})
 
-    waktu = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # 2. Ambil Waktu Realtime
+    waktu_sekarang = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # 1. Simpan ke DB
+    # 3. Simpan ke Database
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO messages (content, status, created_at) VALUES (%s, %s, %s)", (text, "pending", waktu))
+            # Kita masukkan waktu ke kolom created_at
+            cursor.execute(
+                "INSERT INTO messages (content, status, created_at) VALUES (%s, %s, %s)", 
+                (text, "pending", waktu_sekarang)
+            )
         conn.commit()
         conn.close()
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        return jsonify({"status": "error", "message": f"Database Error: {e}"})
 
-    # 2. Generate Audio
+    # 4. Proses Audio
     mp3_file = "output.mp3"
     wav_file = os.path.join("static", "output.wav")
+
     try:
-        asyncio.run(generate_audio_edge(text, mp3_file))
-        subprocess.run(["ffmpeg", "-y", "-i", mp3_file, "-ar", "44100", "-ac", "2", "-acodec", "pcm_s16le", "-f", "wav", wav_file], check=True)
+        tts_obj = gTTS(text, lang="id")
+        tts_obj.save(mp3_file)
+        
+        # Convert ke WAV
+        subprocess.run([
+            "ffmpeg", "-y", "-i", mp3_file, 
+            "-ar", "44100", "-ac", "2", 
+            "-acodec", "pcm_s16le", 
+            "-f", "wav", wav_file
+        ], check=True)
+        
     except Exception as e:
-        return jsonify({"status": "error", "message": "Gagal convert audio"})
+        return jsonify({"status": "error", "message": f"Gagal memproses audio: {e}"})
 
-    # CATATAN: Kita HAPUS bagian requests.get ke ESP32
-    # Karena ESP32 yang akan bertanya ke kita.
+    # 5. Trigger ESP32
+    if not is_playing:
+        try:
+            requests.get(f"{ESP32_BASE}/play", timeout=0.5)
+            is_playing = True
+        except requests.exceptions.RequestException:
+            # ESP32 mungkin offline, tapi pesan tetap tersimpan & sukses di web
+            pass
 
-    return jsonify({"status": "success", "message": "Pesan terkirim ke Cloud!", "time": waktu})
-
-# ================== ENDPOINT BARU UNTUK ESP32 ==================
-@app.route("/api/check_status")
-def check_status():
-    # Endpoint ini akan dipanggil ESP32 setiap 3 detik
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # Cek pesan yang statusnya 'pending'
-            cursor.execute("SELECT id FROM messages WHERE status='pending' ORDER BY id ASC LIMIT 1")
-            msg = cursor.fetchone()
-        conn.close()
-
-        if msg:
-            # Jika ada pesan pending, suruh ESP32 download
-            # Ganti domain di bawah nanti dengan domain Railway kamu
-            return jsonify({"status": "ready"}) 
-        else:
-            return jsonify({"status": "empty"})
-    except:
-        return jsonify({"status": "error"})
+    # 6. RETURN JSON SUKSES (Agar halaman tidak reload)
+    return jsonify({
+        "status": "success", 
+        "message": "Pesan berhasil dikirim ke antrian!",
+        "time": waktu_sekarang
+    })
 
 @app.route("/audio")
 def audio():
-    return send_from_directory("static", "output.wav", mimetype="audio/wav")
+    try:
+        return send_from_directory("static", "output.wav", mimetype="audio/wav")
+    except Exception as e:
+        return f"File audio belum siap: {e}", 404
 
 @app.route("/done")
 def done():
+    global is_playing
+    is_playing = False
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("UPDATE messages SET status=%s WHERE status=%s ORDER BY id ASC LIMIT 1", ("done", "pending"))
         conn.commit()
         conn.close()
-    except:
-        pass
+    except Exception as e:
+        print(f"Database Error: {e}")
     return "OK"
+# =================================================
 
-# Route History dll tetap sama...
+# ================== HISTORY PAGE ==================
 @app.route("/history")
 @login_required
 def history():
     conn = get_db_connection()
     with conn.cursor() as cursor:
+        # Ambil created_at juga
         cursor.execute("SELECT * FROM messages ORDER BY id DESC LIMIT 20")
         messages = cursor.fetchall()
     conn.close()
     return render_template("history.html", messages=messages)
 
-# Relay Routes (Disimpan di DB atau Memory Cloud sementara)
-relay_state = "off"
+# ================== RELAY & STATUS ==================
+relay_status = "off" 
+
 @app.route("/relay/on")
 @login_required
 def relay_on():
-    global relay_state
-    relay_state = "on" # ESP32 harus polling ini juga kalau mau relay jalan
-    return jsonify({"status": "on"})
+    global relay_status
+    try:
+        requests.get(f"{ESP32_BASE}/relay/on", timeout=2)
+        relay_status = "on"
+        return jsonify({"status": "on"})
+    except:
+        return jsonify({"status": "error"})
 
 @app.route("/relay/off")
 @login_required
 def relay_off():
-    global relay_state
-    relay_state = "off"
-    return jsonify({"status": "off"})
-    
+    global relay_status
+    try:
+        requests.get(f"{ESP32_BASE}/relay/off", timeout=2)
+        relay_status = "off"
+        return jsonify({"status": "off"})
+    except:
+        return jsonify({"status": "error"})
+
 @app.route("/relay/status")
-def relay_status():
-    return jsonify({"status": relay_state})
+def relay_status_route():
+    return jsonify({"status": relay_status})
+
+@app.route("/realtime_status")
+def realtime_status():
+    pending = 0
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS ct FROM messages WHERE status=%s", ("pending",))
+            result = cursor.fetchone()
+            if result:
+                pending = result["ct"]
+        conn.close()
+    except Exception:
+        pending = 0
+
+    status = {
+        "is_playing": is_playing,
+        "pending": pending,
+        "relay": relay_status,
+        "time": int(time.time())
+    }
+    return jsonify(status)
 
 if __name__ == "__main__":
-    if not os.path.exists("static"): os.makedirs("static")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    if not os.path.exists("static"):
+        os.makedirs("static")
+    # threaded=True WAJIB ADA
+    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)

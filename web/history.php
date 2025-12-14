@@ -1,5 +1,6 @@
 <?php
 session_start();
+// Cek Login
 if (!isset($_SESSION['user'])) {
     header("Location: login.php");
     exit;

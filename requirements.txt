@@ -1,7 +1,0 @@
-Flask
-edge-tts
-pymysql
-requests
-gunicorn
-cryptography
-asyncio
